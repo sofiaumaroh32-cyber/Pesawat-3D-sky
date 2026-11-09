@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Petualangan Pesawat Matematika 3D</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Fredoka & Nunito -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Three.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- MediaPipe Hands & Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    * {
+      font-family: 'Fredoka', 'Nunito', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(to bottom, #38ef7d, #11998e);
+    }
+    #game-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .text-stroke {
+      -webkit-text-stroke: 2px #1e293b;
+    }
+    .text-stroke-lg {
+      -webkit-text-stroke: 4px #0f172a;
+    }
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 3px solid rgba(255, 255, 255, 0.6);
+    }
+    .pulse-glow {
+      animation: pulseGlow 2s infinite alternate;
+    }
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 15px rgba(255, 223, 0, 0.6); transform: scale(1); }
+      100% { box-shadow: 0 0 30px rgba(255, 223, 0, 0.9); transform: scale(1.03); }
+    }
+    /* Custom Scrollbar for webcam box */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  </style>
+</head>
+<body class="relative flex flex-col justify-between">
+
+  <!-- Canvas Three.js -->
+  <canvas id="game-canvas" class="absolute inset-0 z-0"></canvas>
+
+  <!-- Sound Audio FX (Web Audio API synthetized inside JS) -->
+
+  <!-- UI Overlay -->
+  <div id="ui-container" class="relative z-10 w-full h-full flex flex-col justify-between pointer-events-none p-4 md:p-6">
+
+    <!-- TOP BAR: Status Game & Soal Matematika -->
+    <div id="top-bar" class="w-full max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pointer-events-auto">
+      
+      <!-- Skor & Level -->
+      <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+        <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3 shadow-lg">
+          <i class="fa-solid fa-star text-yellow-400 text-2xl drop-shadow"></i>
+          <div>
+            <div class="text-xs uppercase font-bold text-slate-500">Skor</div>
+            <div id="score-val" class="text-2xl font-black text-slate-800 leading-none">0</div>
+          </div>
+        </div>
+
+        <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3 shadow-lg">
+          <i class="fa-solid fa-trophy text-amber-500 text-2xl drop-shadow"></i>
+          <div>
+            <div class="text-xs uppercase font-bold text-slate-500">Level</div>
+            <div id="level-val" class="text-2xl font-black text-indigo-600 leading-none">1</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BANNER SOAL MATEMATIKA BANGET -->
+      <div id="math-box" class="glass-panel px-6 py-3 rounded-3xl shadow-xl flex-1 max-w-md w-full border-4 border-yellow-300 text-center transform hover:scale-105 transition-transform">
+        <div class="text-xs font-black uppercase text-indigo-500 tracking-wider">Terbangkan ke Jawaban Benar!</div>
+        <div id="question-text" class="text-3xl md:text-4xl font-black text-slate-900 tracking-wider">
+          7 × 8 = ?
+        </div>
+      </div>
+
+      <!-- Kontrol Tangan & Pause Button -->
+      <div class="flex items-center gap-3">
+        <button id="toggle-gesture-btn" onclick="toggleWebcam()" class="glass-panel p-3 rounded-2xl shadow-lg hover:bg-white transition flex items-center gap-2 text-slate-700 font-bold text-sm">
+          <i id="gesture-icon" class="fa-solid fa-hand text-xl text-indigo-500"></i>
+          <span id="gesture-btn-text" class="hidden md:inline">Kamera: OFF</span>
+        </button>
+        <button onclick="togglePause()" class="glass-panel p-3 rounded-2xl shadow-lg hover:bg-white transition text-slate-700 font-bold">
+          <i class="fa-solid fa-pause text-xl text-slate-700"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- PIP CAMERA CONTAINER FOR GESTURE -->
+    <div id="webcam-container" class="absolute bottom-6 left-6 z-20 hidden pointer-events-auto flex flex-col items-center glass-panel p-2 rounded-2xl shadow-2xl border-2 border-indigo-400">
+      <div class="relative w-36 h-28 md:w-44 md:h-32 rounded-xl overflow-hidden bg-slate-900 border border-slate-700">
+        <!-- Video Feed -->
+        <video id="webcam-video" class="w-full h-full object-cover transform -scale-x-100" autoplay playsinline muted></video>
+        <!-- Canvas overlay for hand landmarks -->
+        <canvas id="webcam-canvas" class="absolute inset-0 w-full h-full transform -scale-x-100"></canvas>
+        <div id="hand-status-indicator" class="absolute bottom-1 left-1/2 transform -translate-x-1/2 text-[10px] bg-black/70 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+          Menunggu Tangan...
+        </div>
+      </div>
+      <span class="text-[11px] font-extrabold text-slate-600 mt-1">Gerakkan Tangan Kiri / Kanan</span>
+    </div>
+
+    <!-- TOUCH / MOBILE CONTROLS (Tampil jika touch device atau webcam mati) -->
+    <div id="touch-controls" class="w-full max-w-lg mx-auto flex justify-between items-center pointer-events-auto pb-4 px-2">
+      <button border-2 onclick="steerLane(-1)" class="glass-panel active:scale-95 w-16 h-16 rounded-full flex items-center justify-center shadow-2xl text-2xl text-indigo-600 font-black">
+        <i class="fa-solid fa-arrow-left"></i>
+      </button>
+      <div class="text-xs font-bold text-white bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/20">
+        Gunakan Panah Keyboard ◄ ► / Swipe / Gesture Tangan
+      </div>
+      <button onclick="steerLane(1)" class="glass-panel active:scale-95 w-16 h-16 rounded-full flex items-center justify-center shadow-2xl text-2xl text-indigo-600 font-black">
+        <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+
+  </div>
+
+  <!-- MODAL / SCREEN OVERLAYS (Start Screen, Game Over, Victory) -->
+  
+  <!-- START SCREEN -->
+  <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-md p-4">
+    <div class="glass-panel max-w-lg w-full p-6 md:p-8 rounded-3xl shadow-2xl text-center border-4 border-yellow-400 relative overflow-hidden">
+      <div class="text-5xl mb-2">🛩️✨</div>
+      <h1 class="text-3xl md:text-4xl font-black text-indigo-900 mb-2 tracking-wide uppercase">Petualangan Sky 3D</h1>
+      <p class="text-slate-600 text-sm md:text-base font-bold mb-6">Game Perkalian & Pembagian Kelas 4 SD</p>
+      
+      <div class="bg-indigo-50/80 rounded-2xl p-4 text-left mb-6 space-y-2 border border-indigo-100 text-xs md:text-sm text-slate-700">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center font-bold text-slate-800">1</div>
+          <span>Terbangkan pesawat melewati <b>Awan Jawaban</b> yang benar.</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-indigo-400 flex items-center justify-center font-bold text-white">2</div>
+          <span>Kendalikan dengan <b>Keyboard (Panah)</b>, <b>Sentuhan</b>, atau <b>Gesture Tangan (Webcam)</b>!</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-emerald-400 flex items-center justify-center font-bold text-white">3</div>
+          <span>Kumpulkan skor tertinggi dan naikkan Levelmu!</span>
+        </div>
+      </div>
+
+      <button onclick="startGame()" class="pulse-glow w-full bg-gradient-to-r from-yellow-400 via-amber-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 text-slate-900 font-black text-xl py-4 rounded-2xl shadow-xl transition transform active:scale-95 border-b-4 border-amber-600 uppercase tracking-wider">
+        Mulai Terbang! 🚀
+      </button>
+    </div>
+  </div>
+
+  <!-- PAUSE MODAL -->
+  <div id="pause-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+    <div class="glass-panel max-w-sm w-full p-6 rounded-3xl text-center shadow-2xl border-2 border-white">
+      <h2 class="text-3xl font-black text-slate-800 mb-4">Permainan Dipercepat</h2>
+      <div class="space-y-3">
+        <button onclick="togglePause()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow">Lanjutkan</button>
+        <button onclick="restartGame()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-3 rounded-xl">Ulangi Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER / FINISH MODAL -->
+  <div id="gameover-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-900/75 backdrop-blur-md p-4">
+    <div class="glass-panel max-w-md w-full p-8 rounded-3xl text-center shadow-2xl border-4 border-yellow-400 relative">
+      <div id="result-emoji" class="text-6xl mb-2">🏆</div>
+      <h2 id="result-title" class="text-3xl font-black text-slate-900 mb-1">Hebat Sekali!</h2>
+      <p id="result-subtitle" class="text-slate-600 text-sm font-bold mb-4">Kamu adalah Kapten Matematika!</p>
+      
+      <div class="bg-yellow-50 rounded-2xl p-4 mb-6 border border-yellow-200 flex justify-around">
+        <div>
+          <div class="text-xs uppercase font-extrabold text-slate-400">Total Skor</div>
+          <div id="final-score" class="text-3xl font-black text-indigo-600">0</div>
+        </div>
+        <div class="border-r border-yellow-200"></div>
+        <div>
+          <div class="text-xs uppercase font-extrabold text-slate-400">Bintang</div>
+          <div id="final-stars" class="text-2xl text-yellow-500 font-black">⭐⭐⭐</div>
+        </div>
+      </div>
+
+      <button onclick="restartGame()" class="w-full bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-white font-black text-lg py-4 rounded-2xl shadow-lg transform transition active:scale-95 border-b-4 border-teal-700 uppercase">
+        Main Lagi 🔄
+      </button>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT GAME LOGIC -->
+  <script>
+    /* =========================================================================
+       1. GAME STATE & CONFIGURATION
+       ========================================================================= */
+    const CONFIG = {
+      lanes: [-6, 0, 6], // Left, Center, Right lane X coordinates
+      laneSpeed: 0.25,   // Speed plane moves between lanes
+      forwardSpeed: 0.65, // Speed objects move toward camera
+      gateSpawnZ: -120,  // Distance where cloud gates appear
+      gatePassZ: 5,      // Distance where plane interacts with gate
+      totalQuestions: 10
+    };
+
+    let gameState = {
+      active: false,
+      paused: false,
+      score: 0,
+      level: 1,
+      currentQuestionIndex: 0,
+      currentLane: 1, // 0: Left, 1: Center, 2: Right
+      targetX: 0,
+      planeX: 0,
+      planeY: 0,
+      currentProblem: null,
+      webcamActive: false
+    };
+
+    /* =========================================================================
+       2. THREE.JS 3D WORLD CREATION
+       ========================================================================= */
+    let scene, camera, renderer;
+    let airplaneGroup, propellorMesh;
+    let cloudsGroup, gatesGroup = [];
+    let particleSystem;
+
+    function init3DWorld() {
+      const container = document.getElementById('game-canvas');
+
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x4facfe);
+      scene.fog = new THREE.FogExp2(0x4facfe, 0.008);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 4, 12);
+      camera.lookAt(0, 1, 0);
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ canvas: container, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(20, 40, 20);
+      dirLight.castShadow = true;
+      scene.add(dirLight);
+
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
+      hemiLight.position.set(0, 50, 0);
+      scene.add(hemiLight);
+
+      // Build Objects
+      createAirplane();
+      createBackgroundClouds();
+      createParticleSparkles();
+
+      // Window Resize Listener
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    /* Airplane Model Generator (Procedural Low-Poly Style) */
+    function createAirplane() {
+      airplaneGroup = new THREE.Group();
+
+      // Body (Fuselage)
+      const bodyGeo = new THREE.ConeGeometry(1.2, 4, 8);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff3366, roughness: 0.3, metalness: 0.1 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.rotation.x = Math.PI / 2;
+      airplaneGroup.add(body);
+
+      // Cockpit Canopy
+      const cockpitGeo = new THREE.SphereGeometry(0.7, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+      const cockpitMat = new THREE.MeshStandardMaterial({ color: 0x88e0ff, transparent: true, opacity: 0.85, roughness: 0.1 });
+      const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+      cockpit.position.set(0, 0.5, 0.2);
+      airplaneGroup.add(cockpit);
+
+      // Wings (Main Wing)
+      const wingGeo = new THREE.BoxGeometry(7, 0.15, 1.2);
+      const wingMat = new THREE.MeshStandardMaterial({ color: 0xffcb42, roughness: 0.4 });
+      const wing = new THREE.Mesh(wingGeo, wingMat);
+      wing.position.set(0, 0.1, 0.2);
+      airplaneGroup.add(wing);
+
+      // Tail Wing (Stabilizer)
+      const tailGeo = new THREE.BoxGeometry(2.5, 0.1, 0.8);
+      const tailMat = new THREE.MeshStandardMaterial({ color: 0xffcb42 });
+      const tail = new THREE.Mesh(tailGeo, tailMat);
+      tail.position.set(0, 0.3, -1.6);
+      airplaneGroup.add(tail);
+
+      // Vertical Fin
+      const finGeo = new THREE.BoxGeometry(0.1, 1.2, 0.8);
+      const finMat = new THREE.MeshStandardMaterial({ color: 0xff3366 });
+      const fin = new THREE.Mesh(finGeo, finMat);
+      fin.position.set(0, 0.9, -1.6);
+      airplaneGroup.add(fin);
+
+      // Propeller Blades
+      propellorMesh = new THREE.Group();
+      const bladeGeo = new THREE.BoxGeometry(1.8, 0.2, 0.05);
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+      const blade1 = new THREE.Mesh(bladeGeo, bladeMat);
+      const blade2 = blade1.clone();
+      blade2.rotation.z = Math.PI / 2;
+      propellorMesh.add(blade1, blade2);
+      
+      const noseCap = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffcb42 }));
+      propellorMesh.add(noseCap);
+      propellorMesh.position.set(0, 0, 2.05);
+      airplaneGroup.add(propellorMesh);
+
+      airplaneGroup.position.set(0, 1, 0);
+      scene.add(airplaneGroup);
+    }
+
+    /* Environmental Background Clouds */
+    function createBackgroundClouds() {
+      cloudsGroup = new THREE.Group();
+      const cloudGeo = new THREE.DodecahedronGeometry(2.5, 1);
+      const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true });
+
+      for (let i = 0; i < 45; i++) {
+        const cloud = new THREE.Group();
+        const numPuffs = 3 + Math.floor(Math.random() * 4);
+        for (let j = 0; j < numPuffs; j++) {
+          const puff = new THREE.Mesh(cloudGeo, cloudMat);
+          puff.position.set(
+            (Math.random() - 0.5) * 3,
+            (Math.random() - 0.5) * 2,
+            (Math.random() - 0.5) * 3
+          );
+          const s = 0.8 + Math.random() * 1.2;
+          puff.scale.set(s, s, s);
+          cloud.add(puff);
+        }
+        cloud.position.set(
+          (Math.random() - 0.5) * 120,
+          (Math.random() - 0.5) * 30 - 5,
+          -Math.random() * 200
+        );
+        cloudsGroup.add(cloud);
+      }
+      scene.add(cloudsGroup);
+    }
+
+    /* Particles FX for Correct Answer Fireworks */
+    function createParticleSparkles() {
+      const pCount = 80;
+      const geo = new THREE.BufferGeometry();
+      const positions = new Float32Array(pCount * 3);
+      const colors = new Float32Array(pCount * 3);
+
+      for(let i=0; i<pCount*3; i++) {
+        positions[i] = 0;
+        colors[i] = Math.random();
+      }
+
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+      const mat = new THREE.PointsMaterial({
+        size: 0.6,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0
+      });
+
+      particleSystem = new THREE.Points(geo, mat);
+      scene.add(particleSystem);
+    }
+
+    function triggerParticles(x, y, z) {
+      const pos = particleSystem.geometry.attributes.position.array;
+      for (let i = 0; i < pos.length; i += 3) {
+        pos[i] = x + (Math.random() - 0.5) * 6;
+        pos[i+1] = y + (Math.random() - 0.5) * 6;
+        pos[i+2] = z + (Math.random() - 0.5) * 6;
+      }
+      particleSystem.geometry.attributes.position.needsUpdate = true;
+      particleSystem.material.opacity = 1;
+    }
+
+    /* Canvas Resize Handler */
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    /* =========================================================================
+       3. MATH QUESTION GENERATOR (Grade 4: Multiplication & Division)
+       ========================================================================= */
+    function generateMathProblem() {
+      const isMultiplication = Math.random() > 0.4; // 60% multiplication, 40% division
+      let a, b, questionText, correctAnswer;
+
+      if (isMultiplication) {
+        // Tables 2 to 12
+        a = Math.floor(Math.random() * 11) + 2;
+        b = Math.floor(Math.random() * 10) + 2;
+        correctAnswer = a * b;
+        questionText = `${a} × ${b} = ?`;
+      } else {
+        // Division (evenly divisible)
+        b = Math.floor(Math.random() * 9) + 2; // divisor 2-10
+        const quotient = Math.floor(Math.random() * 10) + 2; // answer 2-11
+        a = b * quotient; // dividend
+        correctAnswer = quotient;
+        questionText = `${a} ÷ ${b} = ?`;
+      }
+
+      // Generate 2 wrong distractor answers
+      let wrong1 = correctAnswer + (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 4) + 1);
+      let wrong2 = correctAnswer + (Math.random() > 0.5 ? 2 : -2) * (Math.floor(Math.random() * 5) + 2);
+      if (wrong1 <= 0) wrong1 = correctAnswer + 3;
+      if (wrong2 <= 0 || wrong2 === wrong1) wrong2 = correctAnswer + 5;
+
+      const options = [correctAnswer, wrong1, wrong2].sort(() => Math.random() - 0.5);
+      const correctLaneIndex = options.indexOf(correctAnswer);
+
+      return {
+        questionText,
+        correctAnswer,
+        options,
+        correctLaneIndex
+      };
+    }
+
+    /* Spawn 3 Cloud Ring Gates for Current Math Problem */
+    function spawnGateSet() {
+      // Clear existing gates
+      clearGates();
+
+      gameState.currentProblem = generateMathProblem();
+      document.getElementById('question-text').innerText = gameState.currentProblem.questionText;
+
+      const gateGroupSet = new THREE.Group();
+      gateGroupSet.position.z = CONFIG.gateSpawnZ;
+
+      CONFIG.lanes.forEach((laneX, idx) => {
+        const val = gameState.currentProblem.options[idx];
+
+        // Gate Frame (Torus Cloud Ring)
+        const ringGeo = new THREE.TorusGeometry(2.2, 0.45, 12, 24);
+        const ringMat = new THREE.MeshStandardMaterial({
+          color: idx === gameState.currentProblem.correctLaneIndex ? 0xffea00 : 0xffffff,
+          roughness: 0.4
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(laneX, 1, 0);
+
+        // Canvas Texture for Number Text inside Gate
+        const textCanvas = document.createElement('canvas');
+        textCanvas.width = 256;
+        textCanvas.height = 256;
+        const ctx = textCanvas.getContext('2d');
+
+        // Circle BG
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(128, 128, 110, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 12;
+        ctx.strokeStyle = '#4f46e5';
+        ctx.stroke();
+
+        // Text
+        ctx.fillStyle = '#1e1b4b';
+        ctx.font = '900 110px Fredoka, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val.toString(), 128, 135);
+
+        const texture = new THREE.CanvasTexture(textCanvas);
+        const textPlaneGeo = new THREE.PlaneGeometry(3.2, 3.2);
+        const textPlaneMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+        const textMesh = new THREE.Mesh(textPlaneGeo, textPlaneMat);
+        textMesh.position.set(laneX, 1, 0);
+
+        ringMesh.add(textMesh);
+        gateGroupSet.add(ringMesh);
+      });
+
+      gatesGroup.push(gateGroupSet);
+      scene.add(gateGroupSet);
+    }
+
+    function clearGates() {
+      gatesGroup.forEach(g => scene.remove(g));
+      gatesGroup = [];
+    }
+
+    /* =========================================================================
+       4. AUDIO SYNTHESIZER (Web Audio API - Friendly Sound Effects)
+       ========================================================================= */
+    const AudioFX = {
+      ctx: null,
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      },
+      playSuccess() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
+        osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
+        osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.3); // C6
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      },
+      playWrong() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now); // A3
+        osc.frequency.linearRampToValueAtTime(130, now + 0.3); // C3 boing
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+    };
+
+    /* =========================================================================
+       5. MEDIAPIPE HAND GESTURE CONTROL
+       ========================================================================= */
+    let hands, cameraUtils;
+
+    function initGestureControl() {
+      const videoElement = document.getElementById('webcam-video');
+      const canvasElement = document.getElementById('webcam-canvas');
+      const canvasCtx = canvasElement.getContext('2d');
+      const statusText = document.getElementById('hand-status-indicator');
+
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
+
+      hands.onResults((results) => {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          const landmarks = results.multiHandLandmarks[0];
+          
+          // Draw simple points
+          for (let i = 0; i < landmarks.length; i++) {
+            const x = landmarks[i].x * canvasElement.width;
+            const y = landmarks[i].y * canvasElement.height;
+            canvasCtx.fillStyle = '#facc15';
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 3, 0, 2 * Math.PI);
+            canvasCtx.fill();
+          }
+
+          // Use Index Finger Tip (Landmark 8) or Wrist (Landmark 0) for X position steering
+          const handX = landmarks[9].x; // Normalized 0.0 (left of video) to 1.0 (right of video)
+
+          // Note: Video is mirrored horizontally (-scale-x-100)
+          // handX near 0 = screen right, handX near 1 = screen left
+          if (handX > 0.62) {
+            setLane(0); // Left Lane
+            statusText.innerText = '⬅️ KIRI';
+            statusText.className = 'absolute bottom-1 left-1/2 transform -translate-x-1/2 text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold';
+          } else if (handX < 0.38) {
+            setLane(2); // Right Lane
+            statusText.innerText = 'KANAN ➡️';
+            statusText.className = 'absolute bottom-1 left-1/2 transform -translate-x-1/2 text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold';
+          } else {
+            setLane(1); // Center Lane
+            statusText.innerText = '⬆️ TENGAH';
+            statusText.className = 'absolute bottom-1 left-1/2 transform -translate-x-1/2 text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold';
+          }
+        } else {
+          statusText.innerText = 'Mencari Tangan...';
+          statusText.className = 'absolute bottom-1 left-1/2 transform -translate-x-1/2 text-[10px] bg-slate-800 text-white px-2 py-0.5 rounded-full font-bold';
+        }
+        canvasCtx.restore();
+      });
+
+      cameraUtils = new Camera(videoElement, {
+        onFrame: async () => {
+          if (gameState.webcamActive) {
+            await hands.send({ image: videoElement });
+          }
+        },
+        width: 320,
+        height: 240
+      });
+    }
+
+    function toggleWebcam() {
+      const container = document.getElementById('webcam-container');
+      const btnText = document.getElementById('gesture-btn-text');
+      const icon = document.getElementById('gesture-icon');
+
+      if (!gameState.webcamActive) {
+        if (!cameraUtils) initGestureControl();
+        cameraUtils.start();
+        gameState.webcamActive = true;
+        container.classList.remove('hidden');
+        btnText.innerText = 'Kamera: ON';
+        icon.className = 'fa-solid fa-video text-xl text-emerald-500';
+      } else {
+        if (cameraUtils) cameraUtils.stop();
+        gameState.webcamActive = false;
+        container.classList.add('hidden');
+        btnText.innerText = 'Kamera: OFF';
+        icon.className = 'fa-solid fa-hand text-xl text-indigo-500';
+      }
+    }
+
+    /* =========================================================================
+       6. INPUT CONTROLS (KEYBOARD & TOUCH)
+       ========================================================================= */
+    function setLane(index) {
+      if (index >= 0 && index <= 2) {
+        gameState.currentLane = index;
+        gameState.targetX = CONFIG.lanes[index];
+      }
+    }
+
+    function steerLane(direction) {
+      const newLane = gameState.currentLane + direction;
+      setLane(newLane);
+    }
+
+    // Keyboard Arrow Keys
+    window.addEventListener('keydown', (e) => {
+      if (!gameState.active || gameState.paused) return;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') steerLane(-1);
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') steerLane(1);
+    });
+
+    // Touch Swipe Gesture
+    let touchStartX = 0;
+    window.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+    });
+    window.addEventListener('touchend', (e) => {
+      if (!gameState.active || gameState.paused) return;
+      const touchEndX = e.changedTouches[0].clientX;
+      const diff = touchEndX - touchStartX;
+      if (Math.abs(diff) > 40) {
+        steerLane(diff > 0 ? 1 : -1);
+      }
+    });
+
+    /* =========================================================================
+       7. MAIN GAMEPLAY LOOP & LOGIC
+       ========================================================================= */
+    function updateGameLogic() {
+      if (!gameState.active || gameState.paused) return;
+
+      // 1. Propeller Spin & Plane Tilt Animation
+      if (propellorMesh) propellorMesh.rotation.z += 0.4;
+
+      // Smooth horizontal movement to target lane
+      gameState.planeX += (gameState.targetX - gameState.planeX) * 0.12;
+      airplaneGroup.position.x = gameState.planeX;
+
+      // Subtle roll/bank angle while moving
+      const rollAngle = (gameState.planeX - gameState.targetX) * 0.08;
+      airplaneGroup.rotation.z = rollAngle;
+      airplaneGroup.rotation.y = -rollAngle * 0.5;
+
+      // Subtle floating Y motion
+      airplaneGroup.position.y = 1 + Math.sin(Date.now() * 0.003) * 0.25;
+
+      // 2. Move Background Clouds (Infinite Loop)
+      cloudsGroup.children.forEach(cloud => {
+        cloud.position.z += CONFIG.forwardSpeed * 0.6;
+        if (cloud.position.z > 20) {
+          cloud.position.z = -180;
+          cloud.position.x = (Math.random() - 0.5) * 120;
+        }
+      });
+
+      // 3. Move Gates towards Airplane
+      gatesGroup.forEach((gateSet) => {
+        gateSet.position.z += CONFIG.forwardSpeed;
+
+        // Collision Check when Gate reaches airplane's Z position
+        if (gateSet.position.z >= CONFIG.gatePassZ - 1.5 && gateSet.position.z <= CONFIG.gatePassZ + 0.5) {
+          checkAnswerCollision();
+          gateSet.position.z = 999; // Prevent double trigger
+        }
+      });
+
+      // Particle system fade out
+      if (particleSystem && particleSystem.material.opacity > 0) {
+        particleSystem.material.opacity -= 0.02;
+      }
+    }
+
+    function checkAnswerCollision() {
+      const isCorrect = (gameState.currentLane === gameState.currentProblem.correctLaneIndex);
+
+      if (isCorrect) {
+        // Correct Answer!
+        AudioFX.playSuccess();
+        gameState.score += 100 + (gameState.level * 10);
+        document.getElementById('score-val').innerText = gameState.score;
+        triggerParticles(airplaneGroup.position.x, airplaneGroup.position.y, airplaneGroup.position.z);
+        
+        // Gentle Forward Speed Bump effect
+        airplaneGroup.position.z -= 1.5;
+        setTimeout(() => airplaneGroup.position.z = 0, 300);
+      } else {
+        // Wrong Answer!
+        AudioFX.playWrong();
+        // Friendly bounce back effect
+        airplaneGroup.position.y = -0.5;
+        setTimeout(() => airplaneGroup.position.y = 1, 300);
+      }
+
+      gameState.currentQuestionIndex++;
+
+      // Progress Level or Finish Game
+      if (gameState.currentQuestionIndex >= CONFIG.totalQuestions) {
+        setTimeout(finishGame, 800);
+      } else {
+        if (gameState.currentQuestionIndex % 4 === 0) {
+          gameState.level++;
+          document.getElementById('level-val').innerText = gameState.level;
+        }
+        setTimeout(spawnGateSet, 1000);
+      }
+    }
+
+    /* Render Loop */
+    function animate() {
+      requestAnimationFrame(animate);
+      updateGameLogic();
+      renderer.render(scene, camera);
+    }
+
+    /* =========================================================================
+       8. FLOW CONTROLS & UI HANDLERS
+       ========================================================================= */
+    function startGame() {
+      AudioFX.init();
+      document.getElementById('start-modal').classList.add('hidden');
+      
+      gameState.active = true;
+      gameState.paused = false;
+      gameState.score = 0;
+      gameState.level = 1;
+      gameState.currentQuestionIndex = 0;
+
+      document.getElementById('score-val').innerText = '0';
+      document.getElementById('level-val').innerText = '1';
+
+      spawnGateSet();
+    }
+
+    function togglePause() {
+      if (!gameState.active) return;
+      gameState.paused = !gameState.paused;
+      const modal = document.getElementById('pause-modal');
+      if (gameState.paused) {
+        modal.classList.remove('hidden');
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function finishGame() {
+      gameState.active = false;
+      clearGates();
+
+      const modal = document.getElementById('gameover-modal');
+      document.getElementById('final-score').innerText = gameState.score;
+
+      let stars = '⭐⭐⭐';
+      let title = 'Kapten Matematika Hebat!';
+      if (gameState.score < 500) {
+        stars = '⭐';
+        title = 'Bagus! Ayo Latihan Lagi!';
+      } else if (gameState.score < 800) {
+        stars = '⭐⭐';
+        title = 'Kerja Bagus, Kapten!';
+      }
+
+      document.getElementById('final-stars').innerText = stars;
+      document.getElementById('result-title').innerText = title;
+      modal.classList.remove('hidden');
+    }
+
+    function restartGame() {
+      document.getElementById('pause-modal').classList.add('hidden');
+      document.getElementById('gameover-modal').classList.add('hidden');
+      startGame();
+    }
+
+    // Initialize 3D Engine on Window Load
+    window.onload = function() {
+      init3DWorld();
+      animate();
+    };
+  </script>
+</body>
+</html>
